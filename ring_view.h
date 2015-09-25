@@ -25,14 +25,16 @@ template<class T>
 class ring_view
 {
 public:
-    typedef T* pointer;
-    typedef T& reference;
-    typedef const T& const_reference;
-    typedef std::size_t size_type;
-    typedef ring_view_iterator<T, false> iterator;
-    typedef ring_view_iterator<T, true> const_iterator;
+    using pointer = T*;
+    using reference = T&;
+    using const_reference = const T&;
+    using size_type = std::size_t;
+    using iterator = ring_view_iterator<T, false>;
+    using const_iterator = ring_view_iterator<T, true>;
 
-    ring_view(void *data, size_type capacity) :
+    // Construct an empty ring_view.
+    //
+    ring_view(void *data, size_type capacity) noexcept :
         data_(static_cast<T*>(data)),
         empty_(true),
         capacity_(capacity),
@@ -40,8 +42,10 @@ public:
         back_idx_(0)
     {}
 
+    // Construct a full ring_view.
+    //
     template<class ContiguousIterator>
-    ring_view(ContiguousIterator begin, ContiguousIterator end) :
+    ring_view(ContiguousIterator begin, ContiguousIterator end) noexcept :
         data_(&*begin),
         empty_(false),
         capacity_(end - begin),
@@ -53,20 +57,20 @@ public:
     // itself. Destroying ring_view rv invalidates rv.begin(),
     // just as with an owning container.
     //
-    iterator begin() { return iterator(0, this); }
-    iterator end() { return iterator(size(), this); }
-    const_iterator begin() const { return const_iterator(0, this); }
-    const_iterator end() const { return const_iterator(size(), this); }
+    iterator begin() noexcept { return iterator(0, this); }
+    iterator end() noexcept { return iterator(size(), this); }
+    const_iterator begin() const noexcept { return const_iterator(0, this); }
+    const_iterator end() const noexcept { return const_iterator(size(), this); }
 
-    reference front() { return *begin(); }
-    reference back() { return *(end() - 1); }
-    const_reference front() const { return *begin(); }
-    const_reference back() const { return *(end() - 1); }
+    reference front() noexcept { return *begin(); }
+    reference back() noexcept { return *(end() - 1); }
+    const_reference front() const noexcept { return *begin(); }
+    const_reference back() const noexcept { return *(end() - 1); }
 
-    bool empty() const { return empty_; }
-    bool full() const { return (not empty_) && (front_idx_ == back_idx_); }
-    size_type size() const { return full() ? capacity_ : (back_idx_ - front_idx_ + capacity_) % capacity_; }
-    size_type capacity() const { return capacity_; }
+    bool empty() const noexcept { return empty_; }
+    bool full() const noexcept { return (not empty_) && (front_idx_ == back_idx_); }
+    size_type size() const noexcept { return full() ? capacity_ : (back_idx_ - front_idx_ + capacity_) % capacity_; }
+    size_type capacity() const noexcept { return capacity_; }
 
     // try_emplace_back() constructs a new element at the back of the ring.
     // If the ring is full, we return false and don't do anything else.
@@ -109,7 +113,7 @@ public:
     bool pop_front()
     {
         assert(!empty());
-        data_[front_idx_]->~T();
+        data_[front_idx_].~T();
         front_idx_ = (front_idx_ + 1) % capacity_;
         if (front_idx_ == back_idx_) {
             empty_ = true;
@@ -147,8 +151,8 @@ private:
 
     // Should this member function be public?
     //
-    reference at(size_type i) { return data_[(front_idx_ + i) % capacity_]; }
-    const_reference at(size_type i) const { return data_[(front_idx_ + i) % capacity_]; }
+    reference at(size_type i) noexcept { return data_[(front_idx_ + i) % capacity_]; }
+    const_reference at(size_type i) const noexcept { return data_[(front_idx_ + i) % capacity_]; }
 
     T *data_;
     bool empty_;
@@ -169,24 +173,24 @@ public:
 
     ring_view_iterator() = default;
 
-    reference operator*() const { return rv_->at(idx_); }
-    ring_view_iterator& operator++() { ++idx_; return *this; }
-    ring_view_iterator operator++(int) { auto r(*this); ++*this; return r; }
-    ring_view_iterator& operator--() { ++idx_; return *this; }
-    ring_view_iterator operator--(int) { auto r(*this); ++*this; return r; }
+    reference operator*() const noexcept { return rv_->at(idx_); }
+    ring_view_iterator& operator++() noexcept { ++idx_; return *this; }
+    ring_view_iterator operator++(int) noexcept { auto r(*this); ++*this; return r; }
+    ring_view_iterator& operator--() noexcept { ++idx_; return *this; }
+    ring_view_iterator operator--(int) noexcept { auto r(*this); ++*this; return r; }
 
-    template<bool C> bool operator==(const ring_view_iterator<T,C>& rhs) const { return idx_ == rhs.idx_; }
-    template<bool C> bool operator!=(const ring_view_iterator<T,C>& rhs) const { return idx_ != rhs.idx_; }
-    template<bool C> bool operator<(const ring_view_iterator<T,C>& rhs) const { return idx_ < rhs.idx_; }
-    template<bool C> bool operator<=(const ring_view_iterator<T,C>& rhs) const { return idx_ <= rhs.idx_; }
-    template<bool C> bool operator>(const ring_view_iterator<T,C>& rhs) const { return idx_ > rhs.idx_; }
-    template<bool C> bool operator>=(const ring_view_iterator<T,C>& rhs) const { return idx_ >= rhs.idx_; }
+    template<bool C> bool operator==(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ == rhs.idx_; }
+    template<bool C> bool operator!=(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ != rhs.idx_; }
+    template<bool C> bool operator<(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ < rhs.idx_; }
+    template<bool C> bool operator<=(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ <= rhs.idx_; }
+    template<bool C> bool operator>(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ > rhs.idx_; }
+    template<bool C> bool operator>=(const ring_view_iterator<T,C>& rhs) const noexcept { return idx_ >= rhs.idx_; }
 
 private:
     friend class ring_view<T>;
     using size_type = typename ring_view<T>::size_type;
 
-    ring_view_iterator(size_type idx, ring_view<T> *rv) : idx_(idx), rv_(rv) {}
+    ring_view_iterator(size_type idx, ring_view<T> *rv) noexcept : idx_(idx), rv_(rv) {}
 
     size_type idx_;
     ring_view<T> *rv_;

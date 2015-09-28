@@ -93,7 +93,7 @@ public:
     //
     auto pop_front()
     {
-        assert(!empty());
+        assert(not empty());
         auto old_front_idx = front_idx_;
         front_idx_ = (front_idx_ + 1) % capacity_;
         --size_;
@@ -113,6 +113,8 @@ public:
         data_[back_idx()] = value;
         if (not full()) {
             ++size_;
+        } else {
+            front_idx_ = (front_idx_ + 1) % capacity_;
         }
     }
 
@@ -122,7 +124,24 @@ public:
         data_[back_idx()] = std::move(value);
         if (not full()) {
             ++size_;
+        } else {
+            front_idx_ = (front_idx_ + 1) % capacity_;
         }
+    }
+
+    void swap(ring_view& rhs) noexcept(std::__is_nothrow_swappable<Popper>::value)
+    {
+        using std::swap;
+        swap(data_, rhs.data_);
+        swap(size_, rhs.size_);
+        swap(capacity_, rhs.capacity_);
+        swap(front_idx_, rhs.front_idx_);
+        swap(popper_, rhs.popper_);
+    }
+
+    friend void swap(ring_view& lhs, ring_view& rhs) noexcept(noexcept(lhs.swap(rhs)))
+    {
+        lhs.swap(rhs);
     }
 
 private:

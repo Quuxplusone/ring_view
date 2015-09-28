@@ -1,4 +1,4 @@
-#include "assignment_ring_view.h"
+#include "ring_view.h"
 
 #include <memory>
 #include <queue>

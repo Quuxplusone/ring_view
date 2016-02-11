@@ -1,5 +1,7 @@
 #pragma once
 
+// Reference implementation of P0059R1.
+
 // On the subject of "API conventions for pushing into a fixed-size container",
 // see http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4416.pdf
 //
@@ -16,25 +18,34 @@
 #include <type_traits>
 #include <utility>
 
-// detail
-template<class, bool> class ring_view_iterator;
+namespace std { namespace experimental {
+
+namespace detail {
+    template<class, bool> class ring_iterator;
+} // namespace detail
 
 template<class T>
 struct default_popper {
-    void operator()(T&) { }  // do nothing, return void
+    void operator()(T&) { }
 };
 
-// Another useful popper class would be this one, which moves-from the
-// popped element. This lets us make a ring-buffer of shared_ptr or
-// unique_ptr with the appropriate semantics.
-//
+template<class T>
+struct copy_popper {
+    copy_popper() = default;
+    copy_popper(const T& t) : t_(t) {}
+    copy_popper(T&& t) : t_(std::move(t)) {}
+    T operator()(T& t) { T result = t; t = t_; return result; }
+private:
+    T t_;
+};
+
 template<class T>
 struct move_popper {
     T operator()(T& t) { return std::move(t); }
 };
 
 template<class T, class Popper = default_popper<T>>
-class ring_view
+class ring_span
 {
 public:
     using value_type = T;
@@ -42,13 +53,13 @@ public:
     using reference = T&;
     using const_reference = const T&;
     using size_type = std::size_t;
-    using iterator = ring_view_iterator<ring_view, false>;
-    using const_iterator = ring_view_iterator<ring_view, true>;
+    using iterator = detail::ring_iterator<ring_span, false>;
+    using const_iterator = detail::ring_iterator<ring_span, true>;
 
-    // Construct a full ring_view.
+    // Construct a full ring_span.
     //
     template<class ContiguousIterator>
-    ring_view(ContiguousIterator begin, ContiguousIterator end, Popper p = Popper()) noexcept :
+    ring_span(ContiguousIterator begin, ContiguousIterator end, Popper p = Popper()) noexcept :
         data_(&*begin),
         size_(end - begin),
         capacity_(end - begin),
@@ -56,10 +67,10 @@ public:
         popper_(std::move(p))
     {}
 
-    // Construct a "partially full" ring_view.
+    // Construct a "partially full" ring_span.
     //
     template<class ContiguousIterator>
-    ring_view(ContiguousIterator begin, ContiguousIterator end, ContiguousIterator first, size_type size, Popper p = Popper()) noexcept :
+    ring_span(ContiguousIterator begin, ContiguousIterator end, ContiguousIterator first, size_type size, Popper p = Popper()) noexcept :
         data_(&*begin),
         size_(size),
         capacity_(end - begin),
@@ -67,13 +78,26 @@ public:
         popper_(std::move(p))
     {}
 
-    // Notice that an iterator contains a pointer to the ring_view itself.
-    // Destroying ring_view rv invalidates rv.begin(), just as with an owning container.
+    // Notice that an iterator contains a pointer to the ring_span itself.
+    // Destroying ring_span rv invalidates rv.begin(), just as with an owning container.
     //
     iterator begin() noexcept { return iterator(0, this); }
     iterator end() noexcept { return iterator(size(), this); }
-    const_iterator begin() const noexcept { return const_iterator(0, this); }
-    const_iterator end() const noexcept { return const_iterator(size(), this); }
+    const_iterator begin() const noexcept { return cbegin(); }
+    const_iterator end() const noexcept { return cend(); }
+    const_iterator cbegin() const noexcept { return const_iterator(0, this); }
+    const_iterator cend() const noexcept { return const_iterator(size(), this); }
+
+    // TODO FIXME BUG HACK: These aren't in P0059R1, but they should be.
+    //
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+    reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+    reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+    const_reverse_iterator rbegin() const noexcept { return crbegin(); }
+    const_reverse_iterator rend() const noexcept { return crend(); }
+    const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
+    const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
     reference front() noexcept { return *begin(); }
     reference back() noexcept { return *(end() - 1); }
@@ -89,7 +113,7 @@ public:
     // Notice that it does not destroy anything.
     // Calling pop_front() on an empty ring is undefined,
     // in the same way as calling pop_front() on an empty vector or list is undefined.
-    // Without pop_front(), you can't use ring_view as a std::queue.
+    // Without pop_front(), you can't use ring_span as a std::queue.
     //
     auto pop_front()
     {
@@ -105,7 +129,7 @@ public:
     // new back of the ring. If the ring is full before
     // the call to push_back(), we rotate the indices and
     // invalidate all iterators into the ring.
-    // Without push_back(), you can't use ring_view as a std::queue.
+    // Without push_back(), you can't use ring_span as a std::queue.
     //
     template<bool b=true, typename=std::enable_if_t<b && std::is_copy_assignable<T>::value>>
     void push_back(const T& value) noexcept(std::is_nothrow_copy_assignable<T>::value)
@@ -129,27 +153,25 @@ public:
         }
     }
 
-    void swap(ring_view& rhs) noexcept(std::__is_nothrow_swappable<Popper>::value)
+    void swap(ring_span& rhs) noexcept(std::__is_nothrow_swappable<Popper>::value)
     {
         using std::swap;
         swap(data_, rhs.data_);
         swap(size_, rhs.size_);
         swap(capacity_, rhs.capacity_);
         swap(front_idx_, rhs.front_idx_);
-        swap(popper_, rhs.popper_);
+        swap(popper_, rhs.popper_);  // TODO FIXME BUG HACK: this is inefficient unless we specialize swap for the standard poppers
     }
 
-    friend void swap(ring_view& lhs, ring_view& rhs) noexcept(noexcept(lhs.swap(rhs)))
+    friend void swap(ring_span& lhs, ring_span& rhs) noexcept(noexcept(lhs.swap(rhs)))
     {
         lhs.swap(rhs);
     }
 
 private:
-    friend class ring_view_iterator<ring_view, true>;
-    friend class ring_view_iterator<ring_view, false>;
+    friend class detail::ring_iterator<ring_span, true>;
+    friend class detail::ring_iterator<ring_span, false>;
 
-    // Should this member function be public?
-    //
     reference at(size_type i) noexcept { return data_[(front_idx_ + i) % capacity_]; }
     const_reference at(size_type i) const noexcept { return data_[(front_idx_ + i) % capacity_]; }
 
@@ -162,8 +184,10 @@ private:
     Popper popper_;
 };
 
+namespace detail {
+
 template<class RV, bool is_const>
-class ring_view_iterator
+class ring_iterator
 {
 public:
     using value_type = typename RV::value_type;
@@ -172,33 +196,37 @@ public:
     using reference = typename std::conditional_t<is_const, const value_type, value_type>&;
     using iterator_category = std::random_access_iterator_tag;
 
-    ring_view_iterator() = default;
+    ring_iterator() = default;
 
     reference operator*() const noexcept { return rv_->at(idx_); }
-    ring_view_iterator& operator++() noexcept { ++idx_; return *this; }
-    ring_view_iterator operator++(int) noexcept { auto r(*this); ++*this; return r; }
-    ring_view_iterator& operator--() noexcept { ++idx_; return *this; }
-    ring_view_iterator operator--(int) noexcept { auto r(*this); ++*this; return r; }
+    ring_iterator& operator++() noexcept { ++idx_; return *this; }
+    ring_iterator operator++(int) noexcept { auto r(*this); ++*this; return r; }
+    ring_iterator& operator--() noexcept { ++idx_; return *this; }
+    ring_iterator operator--(int) noexcept { auto r(*this); ++*this; return r; }
 
-    friend ring_view_iterator& operator+=(ring_view_iterator& it, int i) noexcept { it.idx_ += i; return it; }
-    friend ring_view_iterator& operator-=(ring_view_iterator& it, int i) noexcept { it.idx_ -= i; return it; }
-    friend ring_view_iterator operator+(ring_view_iterator it, int i) noexcept { it += i; return it; }
-    friend ring_view_iterator operator-(ring_view_iterator it, int i) noexcept { it -= i; return it; }
+    friend ring_iterator& operator+=(ring_iterator& it, int i) noexcept { it.idx_ += i; return it; }
+    friend ring_iterator& operator-=(ring_iterator& it, int i) noexcept { it.idx_ -= i; return it; }
+    friend ring_iterator operator+(ring_iterator it, int i) noexcept { it += i; return it; }
+    friend ring_iterator operator-(ring_iterator it, int i) noexcept { it -= i; return it; }
 
-    template<bool C> bool operator==(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ == rhs.idx_; }
-    template<bool C> bool operator!=(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ != rhs.idx_; }
-    template<bool C> bool operator<(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ < rhs.idx_; }
-    template<bool C> bool operator<=(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ <= rhs.idx_; }
-    template<bool C> bool operator>(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ > rhs.idx_; }
-    template<bool C> bool operator>=(const ring_view_iterator<RV,C>& rhs) const noexcept { return idx_ >= rhs.idx_; }
+    template<bool C> bool operator==(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ == rhs.idx_; }
+    template<bool C> bool operator!=(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ != rhs.idx_; }
+    template<bool C> bool operator<(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ < rhs.idx_; }
+    template<bool C> bool operator<=(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ <= rhs.idx_; }
+    template<bool C> bool operator>(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ > rhs.idx_; }
+    template<bool C> bool operator>=(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ >= rhs.idx_; }
 
 private:
     friend RV;
 
     using size_type = typename RV::size_type;
 
-    ring_view_iterator(size_type idx, RV *rv) noexcept : idx_(idx), rv_(rv) {}
+    ring_iterator(size_type idx, RV *rv) noexcept : idx_(idx), rv_(rv) {}
 
     size_type idx_;
     RV *rv_;
 };
+
+} // namespace detail
+
+} } //namespace std::experimental

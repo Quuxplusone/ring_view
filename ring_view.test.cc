@@ -1,11 +1,13 @@
-#include "ring_view.h"
+#include "ring.h"
 
 #include <memory>
 #include <queue>
 #include <vector>
 
+using namespace std::experimental;
+
 using T = std::unique_ptr<int>;
-using RVT = ring_view<T, move_popper<T>>;
+using RVT = ring_span<T, move_popper<T>>;
 
 int main()
 {

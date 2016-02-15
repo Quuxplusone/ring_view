@@ -25,29 +25,30 @@ namespace detail {
 } // namespace detail
 
 template<class T>
-struct default_popper {
+struct null_popper {
     void operator()(T&) { }
 };
 
 template<class T>
+struct default_popper {
+    T operator()(T& t) { return std::move(t); }
+};
+
+template<class T>
 struct copy_popper {
-    copy_popper() = default;
-    copy_popper(const T& t) : t_(t) {}
+    copy_popper() = default;  // TODO FIXME BUG HACK: P0059R1 omits this constructor
+    copy_popper(const T& t) : t_(t) {}  // TODO FIXME BUG HACK: P0059R1 omits this constructor
     copy_popper(T&& t) : t_(std::move(t)) {}
     T operator()(T& t) { T result = t; t = t_; return result; }
 private:
     T t_;
 };
 
-template<class T>
-struct move_popper {
-    T operator()(T& t) { return std::move(t); }
-};
-
 template<class T, class Popper = default_popper<T>>
 class ring_span
 {
 public:
+    using type = ring_span<T, Popper>;
     using value_type = T;
     using pointer = T*;
     using reference = T&;
@@ -143,7 +144,7 @@ public:
     }
 
     template<bool b=true, typename=std::enable_if_t<b && std::is_move_assignable<T>::value>>
-    auto push_back(T&& value) noexcept(std::is_nothrow_move_assignable<T>::value)
+    void push_back(T&& value) noexcept(std::is_nothrow_move_assignable<T>::value)
     {
         data_[back_idx()] = std::move(value);
         if (not full()) {
@@ -153,6 +154,18 @@ public:
         }
     }
 
+    template<typename... Args>
+    void emplace_back(Args&&... args) noexcept(std::is_nothrow_constructible<T, Args...>::value && std::is_nothrow_move_assignable<T>::value)
+    {
+        data_[back_idx()] = T(std::forward<Args>(args)...);
+        if (not full()) {
+            ++size_;
+        } else {
+            front_idx_ = (front_idx_ + 1) % capacity_;
+        }
+    }
+
+    // TODO FIXME BUG HACK: P0059R1 has an unconditional "noexcept" here
     void swap(ring_span& rhs) noexcept(std::__is_nothrow_swappable<Popper>::value)
     {
         using std::swap;
@@ -184,19 +197,68 @@ private:
     Popper popper_;
 };
 
+// TODO FIXME BUG HACK: P0059R1 doesn't define the semantics of this function.
+// TODO FIXME BUG HACK: P0059R1 has a default value for "Popper" here, which is useless.
+// TODO FIXME BUG HACK: Why is this a free function?
+template<typename T, class Popper>
+bool try_push_back(ring_span<T, Popper>& r, const T& value) noexcept(noexcept(r.push_back(value)))
+{
+    if (r.full()) {
+        return false;
+    } else {
+        r.push_back(value);
+        return true;
+    }
+}
+
+template<typename T, class Popper>
+bool try_push_back(ring_span<T, Popper>& r, T&& value) noexcept(noexcept(r.push_back(std::move(value))))
+{
+    if (r.full()) {
+        return false;
+    } else {
+        r.push_back(std::move(value));
+        return true;
+    }
+}
+
+template<typename T, class Popper, class... Args>
+bool try_emplace_back(ring_span<T, Popper>& r, Args&&... args) noexcept(noexcept(r.emplace_back(std::forward<Args>(args)...)))
+{
+    if (r.full()) {
+        return false;
+    } else {
+        r.emplace_back(std::forward<Args>(args)...);
+        return true;
+    }
+}
+
+// TODO FIXME BUG HACK: I don't know what the return value of this function is supposed to be.
+template<typename T, class Popper>
+auto try_pop_front(ring_span<T, Popper>& r) noexcept(noexcept(r.pop_front()))
+{
+    if (r.empty()) {
+        return false;
+    } else {
+        r.pop_front();  // TODO FIXME BUG HACK: and throw it away??
+        return true;
+    }
+}
+
 namespace detail {
 
 template<class RV, bool is_const>
 class ring_iterator
 {
 public:
+    using type = ring_iterator<RV, is_const>;
     using value_type = typename RV::value_type;
     using difference_type = std::ptrdiff_t;
     using pointer = typename std::conditional_t<is_const, const value_type, value_type>*;
     using reference = typename std::conditional_t<is_const, const value_type, value_type>&;
     using iterator_category = std::random_access_iterator_tag;
 
-    ring_iterator() = default;
+    ring_iterator() = default;  // TODO: P0059R1 is missing this default constructor?
 
     reference operator*() const noexcept { return rv_->at(idx_); }
     ring_iterator& operator++() noexcept { ++idx_; return *this; }
@@ -209,6 +271,7 @@ public:
     friend ring_iterator operator+(ring_iterator it, int i) noexcept { it += i; return it; }
     friend ring_iterator operator-(ring_iterator it, int i) noexcept { it -= i; return it; }
 
+    // TODO FIXME BUG HACK: P0059R1 is missing four of these operators
     template<bool C> bool operator==(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ == rhs.idx_; }
     template<bool C> bool operator!=(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ != rhs.idx_; }
     template<bool C> bool operator<(const ring_iterator<RV,C>& rhs) const noexcept { return idx_ < rhs.idx_; }

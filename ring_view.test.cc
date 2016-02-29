@@ -1,4 +1,4 @@
-#include "ring.h"
+#include "ring_span.h"
 
 #include <memory>
 #include <queue>
@@ -7,7 +7,7 @@
 using namespace std::experimental;
 
 using T = std::unique_ptr<int>;
-using RVT = ring_span<T, move_popper<T>>;
+using RVT = ring_span<T>;
 
 int main()
 {

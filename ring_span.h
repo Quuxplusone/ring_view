@@ -125,6 +125,15 @@ public:
         return popper_(data_[old_front_idx]);
     }
 
+    // TODO FIXME BUG HACK: P0059R1 omits this member function.
+    auto pop_back()
+    {
+        assert(not empty());
+        auto old_back_idx = (front_idx_ + size_ - 1) % capacity_;
+        --size_;
+        return popper_(data_[old_back_idx]);
+    }
+
     // push_back() assigns a new value to the element
     // at the end of the ring, and makes that element the
     // new back of the ring. If the ring is full before
@@ -162,6 +171,39 @@ public:
             ++size_;
         } else {
             front_idx_ = (front_idx_ + 1) % capacity_;
+        }
+    }
+
+    // TODO FIXME BUG HACK: P0059R1 omits this member function.
+    template<bool b=true, typename=std::enable_if_t<b && std::is_copy_assignable<T>::value>>
+    void push_front(const T& value) noexcept(std::is_nothrow_copy_assignable<T>::value)
+    {
+        front_idx_ = (front_idx_ + capacity_ - 1) % capacity_;
+        data_[front_idx_] = value;
+        if (not full()) {
+            ++size_;
+        }
+    }
+
+    // TODO FIXME BUG HACK: P0059R1 omits this member function.
+    template<bool b=true, typename=std::enable_if_t<b && std::is_move_assignable<T>::value>>
+    void push_front(T&& value) noexcept(std::is_nothrow_move_assignable<T>::value)
+    {
+        front_idx_ = (front_idx_ + capacity_ - 1) % capacity_;
+        data_[front_idx_] = std::move(value);
+        if (not full()) {
+            ++size_;
+        }
+    }
+
+    // TODO FIXME BUG HACK: P0059R1 omits this member function.
+    template<typename... Args>
+    void emplace_front(Args&&... args) noexcept(std::is_nothrow_constructible<T, Args...>::value && std::is_nothrow_move_assignable<T>::value)
+    {
+        front_idx_ = (front_idx_ + capacity_ - 1) % capacity_;
+        data_[front_idx_] = T(std::forward<Args>(args)...);
+        if (not full()) {
+            ++size_;
         }
     }
 

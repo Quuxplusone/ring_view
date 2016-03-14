@@ -1,9 +1,10 @@
 #include "ring_span.h"
-#include <cassert>
 
 #include <array>
+#include <cassert>
 #include <future>
 #include <iostream>
+#include <queue>
 
 using std::experimental::ring_span;
 
@@ -56,9 +57,12 @@ void ring_test()
     assert(Q5.back() == 10);
 }
 
-void thread_communication_test()
+template<int BufferSize>
+void thread_communication_test(std::deque<int> input, std::deque<int> expected_output)
 {
-    std::array<int, 10> buffer;
+    assert(BufferSize >= input.size());
+
+    std::array<int, BufferSize> buffer;
     std::mutex m;
     std::condition_variable cv;
     auto r = ring_span<int>(buffer.begin(), buffer.end(), buffer.begin(), 0);
@@ -68,7 +72,8 @@ void thread_communication_test()
         int val = 0;
         do
         {
-            std::cin >> val;
+            val = input.front();
+            input.pop_front();
             {
                 std::lock_guard<std::mutex> lg(m);
                 r.push_back(val);
@@ -85,8 +90,18 @@ void thread_communication_test()
             std::unique_lock<std::mutex> lk(m);
             while (r.empty()) cv.wait(lk);  // TODO FIXME BUG HACK: P0059R1 omits this loop
             val = r.pop_front();  // TODO FIXME BUG HACK: P0059R1 has "pop", not "pop_front"
-            std::cout << val << std::endl;
+            assert(val == expected_output.front());
+            expected_output.pop_front();
             lk.unlock();  // TODO FIXME BUG HACK: this is unnecessary
         } while (val != -1);
     });
+}
+
+int main()
+{
+    ring_test();
+    thread_communication_test<10>(
+        {1,2,3,4,5,4,3,2,7,-1},
+        {1,2,3,4,5,4,3,2,7,-1}
+    );
 }

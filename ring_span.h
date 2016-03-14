@@ -44,6 +44,7 @@ private:
     T t_;
 };
 
+// TODO FIXME BUG HACK: perhaps the default type here should actually be null_popper
 template<class T, class Popper = default_popper<T>>
 class ring_span
 {
@@ -276,6 +277,7 @@ bool try_emplace_back(ring_span<T, Popper>& r, Args&&... args) noexcept(noexcept
 }
 
 // TODO FIXME BUG HACK: I don't know what the return value of this function is supposed to be.
+// Probably should be something like std::optional<decltype(r.pop_front())>.
 template<typename T, class Popper>
 auto try_pop_front(ring_span<T, Popper>& r) noexcept(noexcept(r.pop_front()))
 {
@@ -326,10 +328,10 @@ private:
 
     using size_type = typename RV::size_type;
 
-    ring_iterator(size_type idx, RV *rv) noexcept : idx_(idx), rv_(rv) {}
+    ring_iterator(size_type idx, std::conditional_t<is_const, const RV, RV> *rv) noexcept : idx_(idx), rv_(rv) {}
 
     size_type idx_;
-    RV *rv_;
+    std::conditional_t<is_const, const RV, RV> *rv_;
 };
 
 } // namespace detail

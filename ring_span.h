@@ -39,6 +39,8 @@ public:
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
+    ring_span() = default;
+
     template<class ContiguousIterator>
     ring_span(ContiguousIterator begin, ContiguousIterator end, Popper p = Popper()) noexcept :
         data_(&*begin),

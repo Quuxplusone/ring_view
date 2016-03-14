@@ -17,9 +17,10 @@ providing the following facilities:
  - `push_back()` assigns a new value to *end() and increments end().
    If the ring-buffer is at capacity, this will cause begin() also to be
    incremented; that is, the oldest item in the ring-buffer will be
-   forgotten.
+   forgotten. Regardless, push_back() invalidates iterators.
 
  - `pop_front()` performs a customizable action and increments begin().
+   It also invalidates iterators.
 
  - Iteration of the whole buffer (from front to back) is possible
    via the usual `begin()` and `end()` iterators, or via range-based for loop.

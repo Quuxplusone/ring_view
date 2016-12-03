@@ -142,7 +142,7 @@ private:
         size_type idx = size_ - 1;
         while (idx != 0) {
             size_type parent = parent_(idx);
-            if (data_[idx] < data_[parent]) {
+            if (less_(data_[idx], data_[parent])) {
                 swap(data_[idx], data_[parent]);
                 idx = parent;
             } else {
@@ -158,15 +158,15 @@ private:
         while (right_child_(idx) < size_) {
             size_type left = left_child_(idx);
             size_type right = right_child_(idx);
-            if (data_[left] < data_[idx]) {
-                if (data_[right] < data_[left]) {
+            if (less_(data_[left], data_[idx])) {
+                if (less_(data_[right], data_[left])) {
                     swap(data_[idx], data_[right]);
                     idx = right;
                 } else {
                     swap(data_[idx], data_[left]);
                     idx = left;
                 }
-            } else if (data_[right] < data_[idx]) {
+            } else if (less_(data_[right], data_[idx])) {
                 swap(data_[idx], data_[right]);
                 idx = right;
             } else {
@@ -174,7 +174,7 @@ private:
             }
         }
         if (left_child_(idx) < size_) {
-            if (data_[left_child_(idx)] < data_[idx]) {
+            if (less_(data_[left_child_(idx)], data_[idx])) {
                 swap(data_[idx], data_[left_child_(idx)]);
             }
         }
